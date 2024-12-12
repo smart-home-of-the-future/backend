@@ -1,0 +1,5 @@
+{
+    "listen": "127.0.0.1:1234",
+    "dev_timeout_ms": 4000,
+    "default_measure_interval_ms": 100
+}
