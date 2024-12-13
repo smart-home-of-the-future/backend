@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Response",
+  "type": "object",
+  "required": [
+    "data",
+    "success"
+  ],
+  "properties": {
+    "data": {
+      "$ref": "#/definitions/ResponseData"
+    },
+    "success": {
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "ResponseData": {
+      "oneOf": [
+        {
+          "type": [
+            "object",
+            "string"
+          ],
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "Err"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "sensor_interval",
+            "type"
+          ],
+          "properties": {
+            "sensor_interval": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "Configure"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "KeepAliveConfirm"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

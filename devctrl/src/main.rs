@@ -3,10 +3,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use serde::{Deserialize, Serialize};
 use anyhow::{Error, Result, Context};
+use schemars::{schema_for, JsonSchema};
 
 // ========================================================================== //
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, JsonSchema)]
 struct Config {
     listen: String,
     dev_timeout_ms: u64,
@@ -15,7 +16,7 @@ struct Config {
 
 // ========================================================================== //
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type")]
 enum RequestData {
     Startup {
@@ -23,9 +24,14 @@ enum RequestData {
     },
 
     KeepAlive,
+
+    Transmit {
+        channel: String,
+        data: Vec<f32>
+    }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 struct Request {
     uuid: String,
     data: RequestData
@@ -33,7 +39,7 @@ struct Request {
 
 // ========================================================================== //
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type")]
 enum ResponseData {
     Err(String),
@@ -43,9 +49,14 @@ enum ResponseData {
     },
 
     KeepAliveConfirm,
+
+    Transmit {
+        channel: String,
+        data: Vec<f32>
+    }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, JsonSchema)]
 struct Response {
     success: bool,
     data: ResponseData
@@ -151,6 +162,11 @@ async fn serve_inner(state: Arc<State>, stream: &mut TcpStream, data: &str) -> R
                 data: ResponseData::KeepAliveConfirm
             });
         }
+
+        RequestData::Transmit { channel, data } => {
+            err("device tried to transmit data via this service. not yet implemented");
+            return Err(Error::msg("not yet implemented"))
+        }
     }
 
     // TODO: REMOVE
@@ -180,11 +196,20 @@ async fn serve(state: Arc<State>, stream: TcpStream) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = open_config()?;
+    let config = open_config().inspect_err(|_| {
+        println!("expected config schema:");
+        let schema = schema_for!(Config);
+        println!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    })?;
     let state = Arc::new(State {
         config,
         testing_devices: scc::HashMap::new() 
     });
+
+    std::fs::write("response.schema.json",
+                   serde_json::to_string_pretty(&schema_for!(Response))?)?;
+    std::fs::write("request.schema.json",
+                   serde_json::to_string_pretty(&schema_for!(Request))?)?;
 
     let listener = TcpListener::bind(state.config.listen.as_str()).await?;
     log(format!("listening on {}", state.config.listen).as_str());

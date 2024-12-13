@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Request",
+  "type": "object",
+  "required": [
+    "data",
+    "uuid"
+  ],
+  "properties": {
+    "data": {
+      "$ref": "#/definitions/RequestData"
+    },
+    "uuid": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "RequestData": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "dev_type",
+            "type"
+          ],
+          "properties": {
+            "dev_type": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "Startup"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "KeepAlive"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
