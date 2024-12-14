@@ -1,6 +1,5 @@
 {
-    "listen": "127.0.0.1:1234",
-    "dev_timeout_ms": 4000,
+    "listen": "the ip of my pc in my home network:1234",
     "default_measure_interval_ms": 100,
     "db": {
         "url": "http://localhost:8123"

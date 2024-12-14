@@ -4,11 +4,16 @@
   "type": "object",
   "required": [
     "data",
+    "rtc_unix",
     "success"
   ],
   "properties": {
     "data": {
       "$ref": "#/definitions/ResponseData"
+    },
+    "rtc_unix": {
+      "type": "integer",
+      "format": "int64"
     },
     "success": {
       "type": "boolean"
@@ -64,6 +69,32 @@
               "type": "string",
               "enum": [
                 "KeepAliveConfirm"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "channel",
+            "data",
+            "type"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "Transmit"
               ]
             }
           }

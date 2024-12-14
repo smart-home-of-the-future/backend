@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
 use serde::{Deserialize, Serialize};
 use anyhow::{Error, Result, Context};
 use clickhouse::{Client, Row};
 use schemars::{schema_for, JsonSchema};
 use time::OffsetDateTime;
 use uuid::Uuid;
+
 // ========================================================================== //
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
@@ -21,7 +22,6 @@ struct DBConfig {
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 struct Config {
     listen: String,
-    dev_timeout_ms: u64,
     default_measure_interval_ms: u64,
     db: DBConfig,
 }
@@ -89,16 +89,17 @@ fn log(msg: &str) {
 }
 
 async fn all_dev(state: Arc<State>) -> Result<Vec<Device>> {
-    state.db.query(r"SELECT * FROM devices.active")
+    Ok(state.db.query(r"SELECT * FROM devices.active")
         .fetch_all()
+        .await?)
 }
 
 async fn add_dev(state: Arc<State>, dev: Device) -> Result<()> {
     let count = state.db.query(r"
             SELECT CAST(COUNT() AS UInt32)
             FROM devices.active
-            WHERE uuid = ?")
-        .bind(dev.uuid.as_u64_pair())
+            WHERE uuid = toUUID(?)")
+        .bind(dev.uuid.to_string())
         .fetch_one::<u32>()
         .await?;
 
@@ -117,8 +118,8 @@ async fn get_dev(state: Arc<State>, uuid: &Uuid) -> Result<Device> {
     let dev = state.db.query(r"
             SELECT *
             FROM devices.active
-            WHERE uuid = ?")
-        .bind(uuid.as_u64_pair())
+            WHERE uuid = toUUID(?)")
+        .bind(uuid.to_string())
         .fetch_one::<Device>()
         .await?;
     Ok(dev)
@@ -178,13 +179,13 @@ impl Config {
     }
 }
 
-async fn respond<T: Serialize>(stream: &mut TcpStream, data: &T) -> Result<()> {
+async fn respond<T: Serialize>(stream: &mut OwnedWriteHalf, data: &T) -> Result<()> {
     let json = serde_json::to_string(data)?;
     stream.write_all(json.as_bytes()).await?;
     Ok(())
 }
 
-async fn serve_inner(state: Arc<State>, stream: &mut TcpStream, data: &str) -> Result<()> {
+async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str) -> Result<()> {
     let req = serde_json::from_str::<Request>(data)?;
     let req_time = req.rtc_unix.ok_or(Error::msg("missing rtc_unix"))
         .and_then(|x| OffsetDateTime::from_unix_timestamp(x).map_err(|_| Error::msg("invalid rtc_unix")))
@@ -231,22 +232,38 @@ async fn serve_inner(state: Arc<State>, stream: &mut TcpStream, data: &str) -> R
 }
 
 async fn serve(state: Arc<State>, stream: TcpStream) {
-    let mut stream = stream;
-    log(format!("connection: {:?}", stream.peer_addr()).as_str());
+    let addr = stream.peer_addr().unwrap();
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader);
 
-    let mut data = String::new();
-    if let Err(_) = stream.read_to_string(&mut data).await {
-        err("failed to read tcp data");
-        return;
-    }
+    log(format!("connection: {:?}", addr).as_str());
 
-    if let Err(e) = serve_inner(state, &mut stream, data.as_str()).await {
-        err("request / response failed");
-        let _ = respond(&mut stream, &Response {
-            success: false,
-            rtc_unix: OffsetDateTime::now_utc().unix_timestamp(),
-            data: ResponseData::Err(e.to_string())
-        });
+    loop {
+        let mut data = String::new();
+        match reader.read_line(&mut data).await {
+            Err(_) => {
+                err("failed to read tcp data");
+                return;
+            }
+
+            Ok(n) => {
+                if n == 0 {
+                    log("con done");
+                    return;
+                }
+            }
+        }
+
+        log(data.as_str());
+
+        if let Err(e) = serve_inner(state.clone(), &mut writer, data.as_str()).await {
+            err(format!("request / response failed: {}", e).as_str());
+            let _ = respond(&mut writer, &Response {
+                success: false,
+                rtc_unix: OffsetDateTime::now_utc().unix_timestamp(),
+                data: ResponseData::Err(e.to_string())
+            });
+        }
     }
 }
 

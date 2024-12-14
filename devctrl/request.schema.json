@@ -10,6 +10,13 @@
     "data": {
       "$ref": "#/definitions/RequestData"
     },
+    "rtc_unix": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "int64"
+    },
     "uuid": {
       "type": "string"
     }
@@ -45,6 +52,32 @@
               "type": "string",
               "enum": [
                 "KeepAlive"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "channel",
+            "data",
+            "type"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "float"
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "Transmit"
               ]
             }
           }
