@@ -10,3 +10,7 @@ serde = { version = "1.0.216", features = ["derive"] }
 serde_json = "1.0.133"
 tokio = { version = "1.42.0", features = ["full"] }
 schemars = "0.8.21"
+clickhouse = { version = "0.13.1", features = ["lz4", "inserter", "time","uuid"] }
+uuid = "1.11.0"
+time = { version = "0.3.37", features = ["serde", "serde-human-readable"] }
+time-macros = { version = "0.2.0-alpha.1" }
