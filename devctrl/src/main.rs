@@ -1,3 +1,6 @@
+mod scripting;
+mod common;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -8,23 +11,7 @@ use clickhouse::{Client, Row};
 use schemars::{schema_for, JsonSchema};
 use time::OffsetDateTime;
 use uuid::Uuid;
-
-// ========================================================================== //
-
-#[derive(Serialize, Deserialize, Clone, JsonSchema)]
-struct DBConfig {
-    url: String,
-    user: Option<String>,
-    password: Option<String>,
-    headers: Option<HashMap<String, String>>,
-}
-
-#[derive(Serialize, Deserialize, Clone, JsonSchema)]
-struct Config {
-    listen: String,
-    default_measure_interval_ms: u64,
-    db: DBConfig,
-}
+use common::*;
 
 // ========================================================================== //
 
@@ -77,107 +64,6 @@ struct Response {
 }
 
 // ========================================================================== //
-
-// TODO: use proper logger
-fn err(msg: &str) {
-    eprintln!("ERR: {msg}");
-}
-
-// TODO: use proper logger
-fn log(msg: &str) {
-    eprintln!("LOG: {msg}");
-}
-
-async fn all_dev(state: Arc<State>) -> Result<Vec<Device>> {
-    Ok(state.db.query(r"SELECT * FROM devices.active")
-        .fetch_all()
-        .await?)
-}
-
-async fn add_dev(state: Arc<State>, dev: Device) -> Result<()> {
-    let count = state.db.query(r"
-            SELECT CAST(COUNT() AS UInt32)
-            FROM devices.active
-            WHERE uuid = toUUID(?)")
-        .bind(dev.uuid.to_string())
-        .fetch_one::<u32>()
-        .await?;
-
-    if count > 0 {
-        return Err(Error::msg("cannot register device with same uuid twice"));
-    }
-
-    let mut ins = state.db.inserter("devices.active")?;
-    ins.write(&dev)?;
-    ins.end().await?;
-
-    Ok(())
-}
-
-async fn get_dev(state: Arc<State>, uuid: &Uuid) -> Result<Device> {
-    let dev = state.db.query(r"
-            SELECT *
-            FROM devices.active
-            WHERE uuid = toUUID(?)")
-        .bind(uuid.to_string())
-        .fetch_one::<Device>()
-        .await?;
-    Ok(dev)
-}
-
-async fn update_dev(state: Arc<State>, dev: Device) -> Result<()> {
-    state.db.query(r"
-            UPDATE devices.active
-            SET type = ?, last_alive = ? WHERE uuid = ?")
-        .bind(dev.r#type.as_str())
-        .bind(dev.last_alive)
-        .bind(dev.uuid.as_u64_pair())
-        .execute()
-        .await?;
-
-    Ok(())
-}
-
-#[derive(Row, Serialize, Deserialize, Clone, Debug)]
-struct Device {
-    #[serde(with = "clickhouse::serde::uuid")]
-    uuid: Uuid,
-    #[serde(with = "clickhouse::serde::time::datetime")]
-    last_alive: OffsetDateTime,
-    r#type: String,
-}
-
-struct State {
-    config: Config,
-    db: Client
-}
-
-impl Config {
-    fn connect_db(&self) -> Result<Client> {
-        let mut db = Client::default()
-            .with_url(self.db.url.as_str())
-            .with_option("async_insert", "1")
-            .with_option("wait_for_async_insert", "0");
-        if let Some(x) = &self.db.user {
-            db = db.with_user(x.as_str());
-        }
-        if let Some(x) = &self.db.password {
-            db = db.with_password(x.as_str());
-        }
-        if let Some(x) = &self.db.headers {
-            for (k, v) in x {
-                db = db.with_header(k.as_str(), v.as_str());
-            }
-        }
-        Ok(db)
-    }
-
-    fn open() -> Result<Self> {
-        let body = std::fs::read_to_string("config.json")
-            .context("could not open config.json")?;
-        Ok(serde_json::from_str::<Config>(body.as_str())?)
-    }
-}
 
 async fn respond<T: Serialize>(stream: &mut OwnedWriteHalf, data: &T) -> Result<()> {
     let json = serde_json::to_string(data)?;
