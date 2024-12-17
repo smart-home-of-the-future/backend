@@ -12,6 +12,12 @@ Now, you need to run `clickhouse-client create_db.sql` to create the DB structur
 `cd` into `devctrl`, copy the `config.default.json` to `config.json` and modify it,
 and start the device control service by doing `cargo run`.
 
-## Step 3: IOT Devices
+## Step 3: time_server
+`cd` into the `time_server`, copy the `config.default.json` to `config.json` and modify it,
+and start the time provider service by doing `cargo run`.
+
+Why do we need a time providing service? Simple MC don't have RTC, but we still need accurate-ish time.
+
+## Step 4: IOT Devices
 `cd` into `simple_dev`, copy the `config.default.h` to `config.h` and modify it.
 Now open it in the Arduino IDE and flash your ESP32

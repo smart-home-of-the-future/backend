@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include "json.h"
 #include "config.h"
+#include "timee.h"
 
 // TODO: FIX THIS STUPID THING
 String generateUUID() {
@@ -70,6 +71,9 @@ void setup() {
   String uuid = generateUUID();
   Serial.println("MAC: " + WiFi.macAddress());
   Serial.println("UUID address: " + uuid);
+
+  Serial.println(getTimeMS());
+  Serial.println(timeCppString(timeFromMillis(getTimeMS())));
 
   // Connect to the server
   Serial.printf("Connecting to server %s:%d...\n", DEVCTRL_IP, DEVCTRL_PORT);
