@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter, Write};
-use std::sync::Arc;
-use anyhow::{Context, Error};
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
+use anyhow::{anyhow, Context, Error};
 use clickhouse::{Client, Row};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use anyhow::Result;
+use rhai::Engine;
+use crate::scripting::EventCallbacks;
 
 #[derive(Serialize, Deserialize, Clone, JsonSchema)]
 pub struct DBConfig {
@@ -90,7 +93,19 @@ pub struct Device {
 
 pub struct State {
     pub config: Config,
-    pub db: Client
+    pub db: Client,
+    pub scripts: Mutex<Vec<Arc<EventCallbacks>>>,
+    pub engine: Engine
+}
+
+impl State {
+    pub fn clone_scripts(self: &Arc<Self>) -> Result<Vec<Arc<EventCallbacks>>> {
+        if let Ok(scripts) = self.scripts.try_lock() {
+            Ok(scripts.deref().clone())
+        } else {
+            Err(anyhow!("cannot lock scripts"))
+        }
+    }
 }
 
 impl Debug for State {
@@ -124,4 +139,23 @@ impl Config {
             .context("could not open config.json")?;
         Ok(serde_json::from_str::<Config>(body.as_str())?)
     }
+}
+
+/// broadcast data to all scripts
+pub async fn on_data(state: Arc<State>, device: Option<&Uuid>, channel: &str, data: &[f32]) -> Result<()> {
+    let scripts = state.clone_scripts()?;
+    for x in scripts
+        .into_iter()
+        .map(|s| {
+            let data = data.to_vec();
+            let channel = channel.to_string();
+            let device = device.map(|x| x.clone());
+            let state = state.clone();
+            tokio::spawn(async move {
+                s.on_msg(state, device, channel, data)
+            })
+        }) {
+        x.await??;
+    }
+    Ok(())
 }

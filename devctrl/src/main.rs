@@ -1,9 +1,8 @@
 mod scripting;
 mod common;
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream, tcp::OwnedWriteHalf};
 use serde::{Deserialize, Serialize};
 use anyhow::{Error, Result, Context};
@@ -12,6 +11,7 @@ use schemars::{schema_for, JsonSchema};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use common::*;
+use crate::scripting::{add_script, create_engine};
 
 // ========================================================================== //
 
@@ -109,8 +109,7 @@ async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str)
         }
 
         RequestData::Transmit { channel, data } => {
-            err("device tried to transmit data via this service. not yet implemented");
-            return Err(Error::msg("not yet implemented"))
+            on_data(state.clone(), Some(&uuid), channel.as_str(), data.as_slice()).await?;
         }
     }
 
@@ -163,13 +162,23 @@ async fn main() -> Result<()> {
     let db = config.connect_db()?;
     let state = Arc::new(State {
         config,
-        db
+        db,
+        scripts: Mutex::new(Vec::new()),
+        engine: create_engine(),
     });
 
     std::fs::write("response.schema.json",
                    serde_json::to_string_pretty(&schema_for!(Response))?)?;
     std::fs::write("request.schema.json",
                    serde_json::to_string_pretty(&schema_for!(Request))?)?;
+    
+    for dir in std::fs::read_dir("scripts")? {
+        let path = dir?.path();
+        let path = path.to_str().context("wtf")?;
+        let str = std::fs::read_to_string(&path)?;
+        add_script(state.clone(), str.as_str())?;
+        log(format!("registered script {}", path).as_str());
+    }
 
     let listener = TcpListener::bind(state.config.listen.as_str()).await?;
     log(format!("listening on {}", state.config.listen).as_str());

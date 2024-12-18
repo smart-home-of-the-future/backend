@@ -166,6 +166,11 @@ static uint64_t unixToTimeMS(uint64_t unix) {
   return unix;
 }
 
+static uint64_t timeMSToUnix(uint64_t t) {
+    t /= 1000;
+    t += TIME_EPOCH_UNIX;
+}
+
 static String timeCppString(Time t) {
   char buf[TIME_STR_LEN + 1];
   timeStr(buf, t);

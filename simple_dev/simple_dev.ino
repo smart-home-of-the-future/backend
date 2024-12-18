@@ -72,7 +72,11 @@ void setup() {
   Serial.println("MAC: " + WiFi.macAddress());
   Serial.println("UUID address: " + uuid);
 
-  Serial.println(getTimeMS());
+  while (getTimeMS() == 0) {
+    Serial.println("Could not get time!");
+    delay(1000);
+  }
+
   Serial.println(timeCppString(timeFromMillis(getTimeMS())));
 
   // Connect to the server
@@ -84,7 +88,10 @@ void setup() {
   Serial.println("Connected to server");
  
   // send startup message
-  client.printf("{ \"uuid\": \"%s\", \"data\": { \"type\": \"Startup\", \"dev_type\": \"movement_v1\" } }\n", uuid.c_str());
+  // TODO: MAKE WORK FOR WHEN RTC_UNIX > 32 BIT
+  client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"Startup\", \"dev_type\": \"movement_v1\" } }\n",
+    timeMSToUnix(getTimeMS()),
+    uuid.c_str());
   client.flush();
 }
 
