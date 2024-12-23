@@ -24,10 +24,13 @@ fn time() -> Result<u64> {
         .try_into()?)
 }
 
+// [time as LE u64], [time as BE u64]
+
 fn accept_connection(listener: &TcpListener) -> Result<()> {
     let (mut stream, _) = listener.accept()?;
     let now = time()?;
     stream.write(&now.to_le_bytes())?;
+    stream.write(&now.to_be_bytes())?;
     stream.flush()?;
     Ok(())
 }
