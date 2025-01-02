@@ -68,6 +68,7 @@ struct Response {
 async fn respond<T: Serialize>(stream: &mut OwnedWriteHalf, data: &T) -> Result<()> {
     let json = serde_json::to_string(data)?;
     stream.write_all(json.as_bytes()).await?;
+    stream.write_all(b"\n").await?;
     Ok(())
 }
 

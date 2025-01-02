@@ -25,13 +25,6 @@ static bool is_big_endian() {
   return e.c[0];
 }
 
-static void rev_B8(byte* dest, byte const* src) {
-  dest[0] = src[7]; dest[1] = src[6];
-  dest[2] = src[5]; dest[3] = src[4];
-  dest[4] = src[3]; dest[5] = src[2];
-  dest[6] = src[1]; dest[7] = src[0];
-}
-
 static uint64_t getTimeMS() {
   static uint64_t calibrate = 0;
   if (calibrate != 0) {
@@ -43,20 +36,19 @@ static uint64_t getTimeMS() {
   if (!client.connect(CLOCK_IP, CLOCK_PORT)) {
     return 0;
   }
-  byte by[8];
-  memset(by, 0, 8);
-  while (client.available() < 8) { 
+  byte by[16];
+  memset(by, 0, 16);
+  while (client.available() < 16) {
     delay(10); 
   }
-  client.read(by, 8);
+  client.read(by, 16);
   diff = millis() - diff;
+  uint64_t* ptr = (uint64_t*) by;
   if (is_big_endian()) {
-    byte cpy[8];
-    memcpy(cpy, by, 8);
-    rev_B8(by, cpy);
+    ptr ++;
   }
   diff >>= 1; // diff is now about the amount of ms from the time server to this
-  calibrate = (*(uint64_t*) by) + diff;
+  calibrate = *ptr + diff;
   calibrate -= millis();
   client.stop();
 

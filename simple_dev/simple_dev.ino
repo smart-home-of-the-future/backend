@@ -3,54 +3,50 @@
 #include "config.h"
 #include "timee.h"
 
-// TODO: FIX THIS STUPID THING
-String generateUUID() {
-    // Step 1: Get the current time in milliseconds (use millis or micros)
-    unsigned long long timestamp = millis();  // Using millis for simplicity (you can use micros for more precision)
+String generateUUID(uint64_t unix_time_ms, const uint8_t mac[6]) {
+    // UUID fields
+    uint64_t timestamp;
+    uint16_t clock_seq;
+    uint8_t node[6];
 
-    // Step 2: Get the MAC address of the device (48-bit node)
+    // Copy the MAC address into the node
+    memcpy(node, mac, 6);
+
+    // Convert Unix time in milliseconds to UUID timestamp (100-nanosecond intervals since 1582-10-15)
+    uint64_t uuid_epoch_offset = 12219292800000ULL; // Offset in milliseconds between UUID epoch and Unix epoch
+    timestamp = (unix_time_ms + uuid_epoch_offset) * 10000; // Convert ms to 100-ns
+
+    // Generate a random clock sequence
+    srand((unsigned int)time(NULL));
+    clock_seq = (uint16_t)(rand() & 0x3FFF); // 14 bits (0x3FFF)
+
+    // Construct the UUID fields
+    uint32_t time_low = (uint32_t)(timestamp & 0xFFFFFFFF);
+    uint16_t time_mid = (uint16_t)((timestamp >> 32) & 0xFFFF);
+    uint16_t time_hi_and_version = (uint16_t)((timestamp >> 48) & 0x0FFF);
+    time_hi_and_version |= (1 << 12); // Set the version to 1
+
+    uint8_t clock_seq_hi_and_reserved = (uint8_t)((clock_seq >> 8) & 0x3F);
+    clock_seq_hi_and_reserved |= 0x80; // Set the two most significant bits to 10
+
+    uint8_t clock_seq_low = (uint8_t)(clock_seq & 0xFF);
+
+    // Format the UUID string
+    char uuid_str[37];
+    snprintf(uuid_str, 37,
+             "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             time_low, time_mid, time_hi_and_version,
+             clock_seq_hi_and_reserved, clock_seq_low,
+             node[0], node[1], node[2], node[3], node[4], node[5]);
+
+    return uuid_str;
+}
+
+String generateUUID() {
     byte mac[6];
     WiFi.macAddress(mac);
-
-    // Step 3: Prepare parts for UUID v1
-    // Time low (32 bits)
-    unsigned long time_low = timestamp & 0xFFFFFFFF;
-
-    // Time mid (16 bits)
-    unsigned long time_mid = (timestamp >> 32) & 0xFFFF;
-
-    // Time hi and version (16 bits): Version 1 is represented as the upper 4 bits
-    unsigned long time_hi_and_version = ((timestamp >> 48) & 0x0FFF) | 0x1000;  // 0x1000 sets the version to 1
-
-    // Step 4: Build the UUID
-    String uuid = "";
-
-    // Add time_hi_and_version
-    uuid += String(time_hi_and_version, HEX);
-    uuid += "-";
-
-    // Add time_mid
-    uuid += String(time_mid, HEX);
-    uuid += "-";
-
-    // Add time_low
-    uuid += String(time_low, HEX);
-    uuid += "-";
-
-    // Add clock sequence (16 bits), we use 0 for simplicity
-    uuid += "0000";  // 4 hex characters (16 bits)
-
-    uuid += "-";
-
-    // Add node (MAC address)
-    for (int i = 0; i < 6; i++) {
-        if (mac[i] < 16) {
-            uuid += "0";
-        }
-        uuid += String(mac[i], HEX);
-    }
-
-    return uuid;
+    uint64_t unix = timeMSToUnix(getTimeMS());
+    return generateUUID(unix, (uint8_t*) mac);
 }
 
 WiFiClient client;
@@ -90,12 +86,12 @@ void setup() {
   // send startup message
   // TODO: MAKE WORK FOR WHEN RTC_UNIX > 32 BIT
   client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"Startup\", \"dev_type\": \"movement_v1\" } }\n",
-    timeMSToUnix(getTimeMS()),
+    (uint32_t) timeMSToUnix(getTimeMS()),
     uuid.c_str());
   client.flush();
 }
 
-void loop(){
+void loop() {
   int pirStat = digitalRead(PIR_PIN);
   if (pirStat == HIGH) {
     digitalWrite(LED_PIN, HIGH);
