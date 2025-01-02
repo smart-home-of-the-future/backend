@@ -9,13 +9,20 @@
 
 #define DAYS_IN_YEAR 365
 
-static bool is_big_endian() {
-    union {
-        uint32_t i;
-        char c[4];
-    } e = { 0x01000000 };
+static bool is_leap(unsigned year) {
+  if (year % 100 == 0) {
+    return year % 400 == 0;
+  }
+  return year % 4 == 0;
+}
 
-    return e.c[0];
+static bool is_big_endian() {
+  union {
+    uint32_t i;
+    char c[4];
+  } e = { 0x01000000 };
+
+  return e.c[0];
 }
 
 static void rev_B8(byte* dest, byte const* src) {
@@ -122,12 +129,10 @@ static Time timeFromMillis(uint64_t ti) {
   res.h = ti % 24;
   ti /= 24;
 
-  // 2024, which is the time base is a leap year
-
   res.Y = 0;
   for (;;) {
     uint16_t year_n_days = DAYS_IN_YEAR;
-    if (res.Y % 4 == 0) {
+    if (is_leap(res.Y + 2024)) {
       year_n_days += 1;
     }
 
@@ -141,7 +146,7 @@ static Time timeFromMillis(uint64_t ti) {
   }
 
   uint8_t months[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  if (res.Y % 4 == 0) {
+  if (is_leap(res.Y + 2024)) {
     months[1] = 29;
   }
   
@@ -167,8 +172,8 @@ static uint64_t unixToTimeMS(uint64_t unix) {
 }
 
 static uint64_t timeMSToUnix(uint64_t t) {
-    t /= 1000;
-    t += TIME_EPOCH_UNIX;
+  t /= 1000;
+  t += TIME_EPOCH_UNIX;
 }
 
 static String timeCppString(Time t) {
