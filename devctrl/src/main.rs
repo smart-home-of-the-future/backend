@@ -74,7 +74,7 @@ async fn respond<T: Serialize>(stream: &mut OwnedWriteHalf, data: &T) -> Result<
     Ok(())
 }
 
-async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str, last_implicit_keepalive: &mut OffsetDateTime) -> Result<()> {
+async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str, last_implicit_keepalive: &mut OffsetDateTime, last_dev_info: &mut Option<Device>) -> Result<()> {
     let req = serde_json::from_str::<Request>(data)?;
     let req_time = req.rtc_unix.ok_or(Error::msg("missing rtc_unix"))
         .and_then(|x| OffsetDateTime::from_unix_timestamp(x).map_err(|_| Error::msg("invalid rtc_unix")))
@@ -88,6 +88,7 @@ async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str,
                 last_alive: OffsetDateTime::now_utc(),
                 r#type: dev_type
             };
+            *last_dev_info = Some(dev.clone());
             add_dev(state.clone(), dev).await?;
 
             let _ = respond(stream, &Response {
@@ -114,7 +115,11 @@ async fn serve_inner(state: Arc<State>, stream: &mut OwnedWriteHalf, data: &str,
         RequestData::Transmit { channel, data } => {
             if (req_time - *last_implicit_keepalive).as_seconds_f64() >= 5.0 {
                 *last_implicit_keepalive = req_time;
-                let mut old = get_dev(state.clone(), &uuid).await?;
+                let mut old = if let Some(x) = &*last_dev_info {
+                    x.clone()
+                } else {
+                    get_dev(state.clone(), &uuid).await?
+                };
                 old.last_alive = req_time;
                 update_dev(state.clone(), old).await?;
             }
@@ -133,6 +138,7 @@ async fn serve(state: Arc<State>, stream: TcpStream) {
     log(format!("connection: {:?}", addr).as_str());
 
     let mut last_implicit_keepalive = OffsetDateTime::now_utc();
+    let mut last_dev_info = None;
 
     loop {
         let mut data = String::new();
@@ -150,7 +156,7 @@ async fn serve(state: Arc<State>, stream: TcpStream) {
             }
         }
 
-        if let Err(e) = serve_inner(state.clone(), &mut writer, data.as_str(), &mut last_implicit_keepalive).await {
+        if let Err(e) = serve_inner(state.clone(), &mut writer, data.as_str(), &mut last_implicit_keepalive, &mut last_dev_info).await {
             err(format!("request / response failed: {}", e).as_str());
             let _ = respond(&mut writer, &Response {
                 success: false,
