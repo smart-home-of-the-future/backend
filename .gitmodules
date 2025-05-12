@@ -1,0 +1,6 @@
+[submodule "simple_dev/DHT11"]
+	path = simple_dev/DHT11
+	url = https://github.com/dhrubasaha08/DHT11
+[submodule "simple_dev/DS18B20"]
+	path = simple_dev/DS18B20
+	url = https://github.com/matmunk/DS18B20

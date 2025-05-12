@@ -15,13 +15,14 @@ pub struct EventCallbacks {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CustomType)]
+#[rhai_type(extra = Self::build_extra)]
 struct RhaiCtx {
     ctx: Arc<State>
 }
 
-impl CustomType for RhaiCtx {
-    fn build(mut builder: TypeBuilder<Self>) {
+impl RhaiCtx {
+    fn build_extra(builder: &mut TypeBuilder<Self>) {
         builder
             .with_name("CTX")
             .with_fn("log", |_: &mut Self, msg: &str| {
@@ -43,7 +44,10 @@ impl EventCallbacks {
                 }
             }
             let device = device.map(|x| x.to_string());
-            on_msg.call(&ctx.engine, &self.ast, (RhaiCtx { ctx: ctx.clone() }, device, channel, data))?;
+            on_msg.call(&ctx.engine, &self.ast, (RhaiCtx { ctx: ctx.clone() },
+                device.map(|x| x.to_string()).unwrap_or("".to_string()),
+                channel,
+                data.iter().map(|x| rhai::Dynamic::from(*x)).collect::<rhai::Array>()))?;
         }
         Ok(())
     }
@@ -68,7 +72,7 @@ impl EventCallbacks {
 
 pub fn create_engine() -> Engine {
     let mut engine = Engine::new();
-    engine.register_type::<RhaiCtx>();
+    engine.build_type::<RhaiCtx>();
     engine.on_debug(|text, _, _| common::log(text));
     engine.on_print(|text| common::log(text));
     engine

@@ -3,6 +3,9 @@
 #include "config.h"
 #include "timee.h"
 
+
+static DS18B20 ds(26);
+
 String generateUUID(uint64_t unix_time_ms, const uint8_t mac[6]) {
     // UUID fields
     uint64_t timestamp;
@@ -45,64 +48,89 @@ String generateUUID(uint64_t unix_time_ms, const uint8_t mac[6]) {
 String generateUUID() {
     byte mac[6];
     WiFi.macAddress(mac);
-    uint64_t unix = timeMSToUnix(getTimeMS());
+    uint64_t unix = UUID_UNIX_TIME;
     return generateUUID(unix, (uint8_t*) mac);
 }
 
-WiFiClient client;
+static uint64_t last_send_temp = 0;
+static uint64_t last_keepalive;
+static String uuid;
+
+static WiFiClient client;
+
 void setup() {
-  Serial.begin(9600);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(PIR_PIN, INPUT);
-
-  // Connect to Wi-Fi
-  Serial.println("Connecting to Wi-Fi...");
-  WiFi.begin(WLAN_SSID, WLAN_PW);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting...");
-  }
-  Serial.println("Connected to Wi-Fi");
-
-  String uuid = generateUUID();
-  Serial.println("MAC: " + WiFi.macAddress());
-  Serial.println("UUID address: " + uuid);
-
-  while (getTimeMS() == 0) {
-    Serial.println("Could not get time!");
-    delay(1000);
-  }
-
-  Serial.println(timeCppString(timeFromMillis(getTimeMS())));
-
-  // Connect to the server
-  Serial.printf("Connecting to server %s:%d...\n", DEVCTRL_IP, DEVCTRL_PORT);
-  while (!client.connect(DEVCTRL_IP, DEVCTRL_PORT)) {
-    Serial.println("Connection to server failed");
-    delay(1000);
-  }
-  Serial.println("Connected to server");
- 
-  // send startup message
-  // TODO: MAKE WORK FOR WHEN RTC_UNIX > 32 BIT
-  client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"Startup\", \"dev_type\": \"movement_v1\" } }\n",
-    (uint32_t) timeMSToUnix(getTimeMS()),
-    uuid.c_str());
-  client.flush();
+  Serial.begin(74880); // 74880
+  Serial.println("\n\nHello world");
 }
 
 void loop() {
-  int pirStat = digitalRead(PIR_PIN);
-  if (pirStat == HIGH) {
-    digitalWrite(LED_PIN, HIGH);
-    //Serial.println("motion!");
-  } 
-  else {
-    digitalWrite(LED_PIN, LOW); // turn LED OFF if we have no motion
+  if (WiFi.status() != WL_CONNECTED) {
+    do {
+      WiFi.begin(WLAN_SSID, WLAN_PW);
+      Serial.println("Connecting to Wi-Fi...");
+      delay(5000);
+    } while (WiFi.status() != WL_CONNECTED);
+    Serial.println("Connected to Wi-Fi");
+
+    uuid = generateUUID();
+    Serial.println("MAC: " + WiFi.macAddress());
+    Serial.println("UUID address: " + uuid);
+
+    for (int niter = 0; getTimeMS() == 0 && niter < 3; niter ++) {
+      Serial.println("waiting for time server...");
+      delay(1000);
+    }
   }
+
+  if (!client.connected()) {
+    Serial.printf("Connecting to server %s:%d...\n", DEVCTRL_IP, DEVCTRL_PORT);
+    while (!client.connect(DEVCTRL_IP, DEVCTRL_PORT)) {
+      Serial.println("Connection to server failed, retry");
+      delay(5000);
+    }
   
+    if (client.connected()) {
+      Serial.println("Connected to server");
+      // TODO: MAKE WORK FOR WHEN RTC_UNIX > 32 BIT
+      client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"Startup\", \"dev_type\": \"temp_v1\" } }\n",
+        uuid.c_str(),
+        (uint32_t) timeMSToUnix(getTimeMS()));
+      last_keepalive = millis();
+      client.flush();
+    }
+  }
+
+  if (last_send_temp == 0 || millis() - last_send_temp > DATA_SEND_INTV) {
+    while (ds.selectNext()) {
+      uint8_t address[8];
+      ds.getAddress(address);
+      uint32_t addr0 = ((uint32_t*) address)[0];
+      uint32_t addr1 = ((uint32_t*) address)[1];
+
+      client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"Transmit\", \"channel\": \"%u_%u\", \"data\": [%f] } }\n",
+        uuid.c_str(),
+        (uint32_t) timeMSToUnix(getTimeMS()),
+        addr0, addr1,
+        ds.getTempC());
+      client.flush();
+    }
+
+    last_send_temp = millis();
+  }
+
+  if (millis() - last_keepalive > KEEPALIVE_INTV) {
+    client.printf("{ \"uuid\": \"%s\", \"rtc_unix\": %u, \"data\": { \"type\": \"KeepAlive\" } }\n",
+      uuid.c_str(),
+      (uint32_t) timeMSToUnix(getTimeMS()));
+    client.flush();
+
+    last_keepalive = millis();
+  }
+
   while (client.available()) {
     String serverMessage = client.readStringUntil('\n');
     Serial.println("Message from server: " + serverMessage);
   }
+
+  delay(SLEEP_INTV);
 } 

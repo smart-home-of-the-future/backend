@@ -61,7 +61,7 @@ pub async fn get_dev(state: Arc<State>, uuid: &Uuid) -> anyhow::Result<Device> {
     let dev = state.db.query(r"
             SELECT *
             FROM devices.active
-            WHERE uuid = toUUID(?) AND now() > (last_alive + INTERVAL 10 SECONDS)")
+            WHERE uuid = toUUID(?) AND now() < (last_alive + INTERVAL 10 SECONDS)")
         .bind(uuid.to_string())
         .fetch_one::<Device>()
         .await?;
@@ -70,12 +70,12 @@ pub async fn get_dev(state: Arc<State>, uuid: &Uuid) -> anyhow::Result<Device> {
 
 pub async fn update_dev(state: Arc<State>, dev: Device) -> anyhow::Result<()> {
     state.db.query(r"
-            UPDATE devices.active
-            SET type = ?, last_alive = ?
-            WHERE uuid = ?")
+            ALTER TABLE devices.active
+            UPDATE type = ?, last_alive = ?
+            WHERE uuid = toUUID(?)")
         .bind(dev.r#type.as_str())
-        .bind(dev.last_alive)
-        .bind(dev.uuid.as_u64_pair())
+        .bind(dev.last_alive.unix_timestamp())
+        .bind(dev.uuid.to_string())
         .execute()
         .await?;
 

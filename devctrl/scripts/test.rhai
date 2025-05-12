@@ -1,8 +1,8 @@
 fn on_msg(ctx, dev, channel, data) {
-    ctx.log("received some data from " + dev + ": " + data);
+    ctx.log(`received some data from ${dev} on ${channel}: ${data}`);
 }
 
 #{
     on_msg: on_msg,
-    only_channel: ["is_moving"]
+    //only_channels: ["ch1"]
 }

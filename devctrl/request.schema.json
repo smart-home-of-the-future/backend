@@ -43,6 +43,7 @@
           }
         },
         {
+          "description": "transmit packets that are 5 seconds ago from the last transmit packet also act as KeepAlive startup also counts as KeepAlive",
           "type": "object",
           "required": [
             "type"

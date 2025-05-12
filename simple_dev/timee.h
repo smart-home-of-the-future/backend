@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "config.h"
+#include "DS18B20/src/DS18B20.cpp"
 
 // 1/1/2024 00:00
 #define TIME_EPOCH_UNIX_MS 1704063600000
@@ -166,6 +167,7 @@ static uint64_t unixToTimeMS(uint64_t unix) {
 static uint64_t timeMSToUnix(uint64_t t) {
   t /= 1000;
   t += TIME_EPOCH_UNIX;
+  return t;
 }
 
 static String timeCppString(Time t) {
